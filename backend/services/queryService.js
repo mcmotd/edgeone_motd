@@ -4,7 +4,7 @@ const pingBedrock = require('../utils/bedrock');
 const Logger = require('../utils/logger');
 const { getCache, setCache } = require('./cacheService');
 
-// 将 mcpe-ping 包装成 Promise
+// 将 RakNet UDP 查询包装成 Promise
 function pingBedrockPromise(ip, port) {
     return new Promise((resolve, reject) => {
         pingBedrock(ip, port, 
@@ -14,8 +14,7 @@ function pingBedrockPromise(ip, port) {
                 }
                 resolve(res);
             },
-            config.queryTimeout,
-            //true //FullQuery
+            config.queryTimeout
         );
     });
 }
@@ -174,7 +173,6 @@ async function performLiveQuery(ip, port, iconUrl, serverType = 'auto', isSRV = 
     try {
         const result = await Promise.any(promisesToRace);
 
-        // (此部分格式化逻辑保持不变)
         if (result.type === 'Java') {
             const { data } = result;
             const playersSample = data.players.sample?.map(p => p.name).join(', ') || '无';
@@ -193,30 +191,24 @@ async function performLiveQuery(ip, port, iconUrl, serverType = 'auto', isSRV = 
             };
         } else { // result.type === 'Bedrock'
             const { data } = result;
-            const advertise = data.advertise.split(';')
-            const advertiseData = {
-                "serverType": advertise[0],
-                "motd": advertise[1],
-                "protocol": advertise[2],
-                "version": advertise[3],
-                "currentPlayers": advertise[4],
-                "maxPlayers": advertise[5],
-                "serverID": advertise[6],
-                "levelname": advertise[7],
-                "gamemode": advertise[8],
-            }
             return {
                 type: 'Bedrock',
                 status: 'online',
+                edition: data.edition,
                 host: `${result.host}:${result.port}`,
                 motd: data.name,
                 pureMotd: data.cleanName,
+                motdLines: data.motdLines,
                 version: data.version,
                 players: { online: data.currentPlayers, max: data.maxPlayers },
-                gamemode: advertiseData.gamemode || null,
+                gamemode: data.gamemode,
                 delay: Date.now() - now,
-                protocol: advertiseData.protocol || null,
-                levelname: advertiseData.levelname || null,
+                protocol: data.protocol,
+                levelname: data.levelname,
+                serverID: data.serverID,
+                gamemodeId: data.gamemodeId,
+                ipv4Port: data.ipv4Port,
+                ipv6Port: data.ipv6Port,
                 icon: iconUrl,
             };
         }

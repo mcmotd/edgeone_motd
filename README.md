@@ -73,6 +73,33 @@ https://你的域名/api/sync_app_img?host=你的服务器&stype=je
 
 前端配置修改 `backend/config/front.json`，图片模板修改 `backend/config/pic.json`，然后重新部署。原项目的 `/api/update` 未实现，本移植未把它描述为可用的配置保存功能。管理员默认密码仍禁止登录；MD5 登录协议沿用原项目，不等同于新增的安全认证系统。
 
+### 基岩版 MOTD
+
+使用 RakNet `0x01` Unconnected Ping / `0x1c` Pong 直接查询；Pong 的服务器列表字符串以大端 16 位 UTF-8 **字节长度**开头。解析兼容 `MCPE`、教育版 `MCEE` 以及只有前六个字段的旧版广告串，不要求可选字段齐全。
+
+| API 字段 | 含义 |
+| --- | --- |
+| `edition` | 广告中的版本类型：`MCPE` 或 `MCEE` |
+| `motd` | MOTD 第一行与第二行的非空原始文本，以 `\n` 连接；第一行为空时仍显示第二行 |
+| `pureMotd` | 两行 MOTD 的纯文本，移除 Bedrock 格式码，保留换行 |
+| `motdLines` | 两个原始行的数组，保留空第一行；缺少第二行时该位置为 `""` |
+| `protocol`、`version`、`players` | 原有协议、版本及玩家字段，广告中的数值保持字符串，兼容原 API |
+| `serverID` | 完整服务器唯一 ID，始终保留字符串，避免 64 位整数精度丢失 |
+| `gamemode`、`gamemodeId` | 游戏模式名称与广告中的数字标识 |
+| `ipv4Port`、`ipv6Port` | 服务器广告的 IPv4/IPv6 端口，不替换用户实际查询端口 |
+| `levelname` | 保留原兼容字段，内容为第二行的纯文本；Wiki 将该位置定义为 MOTD 第二行，不保证是真实存档名 |
+
+缺失的可选元数据为 `null`；两行都为空时不伪造服务器名称作为 MOTD。网页和 `/api/app_img` 使用独立的 Bedrock 格式规则：`§m`、`§n` 是红石/铜色，不是 Java 的删除线/下划线；支持 Wiki 列出的扩展颜色，颜色切换保留粗体、斜体与乱码样式，`§r` 重置。Java 格式规则保持原样。
+
+`/api/status_img` 的旧模板仍是单行预览：两行先用空格连接，再按 `backend/config/pic.json` 截断，不替代完整 MOTD。查询范围仍为 RakNet UDP 服务器发现，不包含 NetherNet 的 `/v1/join` 能力查询。
+
+### 跨域访问（CORS）
+
+- 公开 API 使用 `Access-Control-Allow-Origin: *`，允许 GET/POST；OPTIONS 预检返回 204，允许 `Content-Type`、`Authorization`，预检缓存 86400 秒。不开放跨域凭据。
+- `/api/login`、`/api/admin/**` 和管理页预留的 `/api/update`（仍未实现）不开放 CORS；带非本站 `Origin`（包括 `null`）的请求与预检返回 403。同源及不带 `Origin` 的管理员请求保持原行为；`/api/config` 读取接口仍公开。
+- CORS 不等于鉴权：`/api/admin/stats` 当前没有后端管理员鉴权，curl 等不带 `Origin` 的客户端仍能请求该接口。
+
+
 ## 本地运行
 
 推荐 Node 24；构建工具兼容 EdgeOne 的 Node 22 构建环境。
@@ -90,12 +117,13 @@ npm start
 
 ## 验证记录与边界
 
-- 原有13个协议及统计边界测试通过；新增 `node --test test/cloud-proxy.test.mjs` 回归测试单独通过，验证截图返回公开 HTTPS 域名而非平台内部回源域名。
+- 本次 Bedrock MOTD 修复：三个针对性测试文件共27项检查已验证通过；首轮26项通过，修正全图灰色抗锯齿像素干扰的 PNG 断言后，单独复验原失败项通过。覆盖两行/空第一行、UTF-8、旧版/教育版、64位 ID、完整 HTTP 返回、Bedrock/Java 格式差异和真实 PNG 像素。实际浏览器显示两行及红石/铜色；两种 HTTP PNG 均已解码并人工检查。
+- 原有13个协议及统计边界测试通过；本次 `node --test test/cors.test.mjs test/cloud-proxy.test.mjs` 通过7项，覆盖公开 GET/POST 与 PNG 的跨域响应、OPTIONS 预检、管理员跨域拒绝及代理后的同源判断，同时验证截图链接使用公开 HTTPS 域名。
 - `npm run build`：生产前端构建通过。
 - 本地真实 TCP/UDP 协议服务：完整 HTTP API 的 Java、Bedrock、auto 查询均返回 online；两类 PNG 返回有效图片。
 - 浏览器实际提交查询并显示服务器状态；中文 PNG 字体已人工检查。
 - 通过统一接口注入真实临时磁盘适配器，验证了缓存 TTL、截图过期删除、分页清理和25个并发独立日志；验证脚本已删除。随后在真实 EdgeOne 部署验证了 Blob 自动认证、缓存/查询日志写入及统计读取，云端仅传命名空间，不需要外部 API Token。
-- 用户提供的服务器已在 EdgeOne 云端通过完整 HTTP API 实测：`h1.getmc.cn:35070` 基岩版 online，版本 `1.21.124`、玩家 `0/50`、延迟32 ms；`h1.getmc.cn:35071` Java版 online，版本 `Purpur 26.1.2`、玩家 `0/91`、页面延迟106 ms。基岩服务器本次返回的 MOTD 为空。
+- 用户提供的服务器此前已在 EdgeOne 云端通过完整 HTTP API 实测：`h1.getmc.cn:35070` 基岩版 online，版本 `1.21.124`、玩家 `0/50`、延迟32 ms；`h1.getmc.cn:35071` Java版 online，版本 `Purpur 26.1.2`、玩家 `0/91`、页面延迟106 ms。此前基岩 MOTD 为空的实现只读取第一行；本次本机真实 UDP 回包第一行为空、第二行是 `DFGM`，新解析已返回 `DFGM`。本次未重新部署 EdgeOne。
 - 当前项目通过已关联 GitHub `main` 分支自动部署。预览域名需要保留完整授权参数或由浏览器保存授权 Cookie；无 Cookie 的脚本跟随授权跳转可能得到401，不能因此断定站点故障。云函数入口已修复 Express 识别、Blob SDK 凭据打包及公开请求域名转发。
 
 ## 参考与许可
@@ -103,5 +131,8 @@ npm start
 - [腾讯 EdgeOne 配置说明](https://cloud.tencent.com/document/product/1552/127389)
 - [官方 Node 云函数与 Express 导出规范](https://github.com/TencentEdgeOne/edgeone-pages-plugin/blob/main/skills/node-functions/SKILL.md)
 - [Pages Blob SDK 与认证说明](https://pages-blob.edgeone.dev/)
+- [Bedrock Wiki：RakNet Ping/Pong 与完整服务器列表字段](https://wiki.bedrock.dev/servers/raknet#unconnected-pongs)
+- [Minecraft Wiki：Java/Bedrock 颜色与格式规则](https://minecraft.wiki/w/Formatting_codes#Color_codes)
+- [Minecraft Wiki：NetherNet 与 HTTP 能力查询](https://minecraft.wiki/w/NetherNet)
 - [Noto CJK 字体来源](https://github.com/notofonts/noto-cjk)，字体许可证位于 `backend/fonts/LICENSE`。
 - 原项目许可证保留在根目录 `LICENSE`。

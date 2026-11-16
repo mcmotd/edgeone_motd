@@ -69,7 +69,7 @@ const motdHtml = computed(() => {
     return props.serverData.motd_html;
   }
   if (props.serverData.motd) {
-    return parseMotdToHtml(props.serverData.motd);
+    return parseMotdToHtml(props.serverData.motd, props.serverData.type);
   }
   return '';
 });

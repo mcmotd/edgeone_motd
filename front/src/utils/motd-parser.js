@@ -15,6 +15,17 @@ const LEGACY_CODES = {
     'k': { class: 'obfuscated' }
 };
 
+const BEDROCK_CODES = {
+    ...LEGACY_CODES,
+    '7': { color: '#C5C5C5' }, '8': { color: '#545454' }, '9': { color: '#447FFF' },
+    'a': { color: '#54FF54' }, 'b': { color: '#54FFFF' }, 'c': { color: '#FF5454' },
+    'd': { color: '#FF54FF' }, 'e': { color: '#FFFF54' }, 'g': { color: '#EFCE16' },
+    'h': { color: '#D9CCB8' }, 'i': { color: '#A9B4B7' }, 'j': { color: '#8F727D' },
+    'm': { color: '#EE222C' }, 'n': { color: '#C87363' }, 'p': { color: '#FFBF1E' },
+    'q': { color: '#13A045' }, 's': { color: '#5FECFF' }, 't': { color: '#577BFF' },
+    'u': { color: '#B66CDD' }, 'v': { color: '#FF6A00' }, 'w': { color: '#8BB3FF' }
+};
+
 const JSON_NAME_COLOR_MAP = {
     'black': '#000000', 'dark_blue': '#0000AA', 'dark_green': '#00AA00', 'dark_aqua': '#00AAAA',
     'dark_red': '#AA0000', 'dark_purple': '#AA00AA', 'gold': '#FFAA00', 'gray': '#AAAAAA',
@@ -26,8 +37,10 @@ function escapeHtml(text) {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function parseLegacyMotd(str) {
+function parseLegacyMotd(str, serverType = 'Java') {
     if (!str) return '';
+    const isBedrock = serverType === 'Bedrock';
+    const codes = isBedrock ? BEDROCK_CODES : LEGACY_CODES;
     const parts = str.split('§');
     let html = `<span>${escapeHtml(parts[0])}</span>`;
     let activeStyles = [];
@@ -35,28 +48,28 @@ function parseLegacyMotd(str) {
 
     for (let i = 1; i < parts.length; i++) {
         const part = parts[i];
-        if (!part) continue;
 
-        const code = part[0].toLowerCase();
-        const text = part.substring(1);
-        let isObfuscated = activeClasses.has('obfuscated');
+        const code = part[0]?.toLowerCase();
+        let text = part.substring(1);
 
         if (code === 'r') {
             activeStyles = [];
             activeClasses.clear();
-            isObfuscated = false;
         } else {
-            const format = LEGACY_CODES[code];
+            const format = codes[code];
             if (format) {
                 if (format.color) {
-                    activeStyles = [`color: ${format.color};`];
-                    activeClasses.clear();
+                    // Bedrock changes only the color; Java also clears decorations.
+                    activeStyles = isBedrock ? activeStyles.filter(style => !style.startsWith('color:')) : [];
+                    activeStyles.unshift(`color: ${format.color};`);
+                    if (!isBedrock) activeClasses.clear();
                 }
                 if (format.style) activeStyles.push(format.style);
                 if (format.class) {
                     activeClasses.add(format.class);
-                    if (format.class === 'obfuscated') isObfuscated = true;
                 }
+            } else {
+                text = `§${part}`;
             }
         }
 
@@ -64,10 +77,12 @@ function parseLegacyMotd(str) {
             const styleAttr = activeStyles.length > 0 ? `style="${[...new Set(activeStyles)].join(' ')}"` : '';
             const classAttr = activeClasses.size > 0 ? `class="${[...activeClasses].join(' ')}"` : '';
 
-            if (isObfuscated) {
-                // [核心] 为每个乱码字符生成一个不包含内容的span
-                for (let j = 0; j < text.length; j++) {
-                    html += `<span ${styleAttr} ${classAttr}></span>`;
+            if (activeClasses.has('obfuscated')) {
+                // Obfuscate glyphs, not spacing or line breaks.
+                for (const character of text) {
+                    html += /\s/u.test(character)
+                        ? character
+                        : `<span ${styleAttr} ${classAttr}></span>`;
                 }
             } else {
                 html += `<span ${styleAttr} ${classAttr}>${escapeHtml(text)}</span>`;
@@ -123,10 +138,10 @@ function parseJsonComponent(component) {
     return `<span ${classAttr} ${styleAttr}>${content}</span>`;
 }
 
-export function parseMotdToHtml(motdData) {
+export function parseMotdToHtml(motdData, serverType = 'Java') {
     if (!motdData) return '';
     let htmlResult = (typeof motdData === 'object' && motdData !== null)
         ? parseJsonComponent(motdData)
-        : parseLegacyMotd(String(motdData));
+        : parseLegacyMotd(String(motdData), serverType);
     return htmlResult.replace(/\n/g, '<br>');
 }

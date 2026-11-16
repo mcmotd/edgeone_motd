@@ -21,7 +21,7 @@ export const useAppStore = defineStore('app', {
 
             try {
                 const backendResponse = await getMinecraftServerInfo(ip, port);
-                const motdAsHtml = parseMotdToHtml(backendResponse.motd);
+                const motdAsHtml = parseMotdToHtml(backendResponse.motd, backendResponse.type);
 
                 // [核心修改] 扩展这个对象，包含所有需要的数据
                 const formattedResponse = {

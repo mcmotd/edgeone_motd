@@ -11,7 +11,24 @@ if (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD_MD5) {
 
 const app = express();
 app.set('trust proxy', 1);
-app.use(cors());
+const publicCors = cors({
+  origin: '*',
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400
+});
+app.use((req, res, next) => {
+  if (!/^\/(?:admin|login|update)(?:\/|$)/i.test(req.path)) {
+    return publicCors(req, res, next);
+  }
+
+  res.vary('Origin');
+  const origin = req.get('Origin');
+  if (origin && origin !== `${req.protocol}://${req.get('host')}`) {
+    return res.status(403).json({ status: 'error', message: 'Cross-origin access to administrator APIs is forbidden' });
+  }
+  next();
+});
 app.use(express.json());
 app.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');

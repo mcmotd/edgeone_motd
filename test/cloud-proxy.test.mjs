@@ -55,16 +55,20 @@ test('cloud screenshots use the public HTTPS origin instead of the internal gate
     const base = `http://127.0.0.1:${server.address().port}`;
     const response = await fetch(`${base}/api/sync_app_img`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Origin: 'https://client.example.test' },
         body: JSON.stringify({ host: `127.0.0.1:${minecraft.address().port}`, stype: 'je' })
     });
     assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), '*');
     const result = await response.json();
     assert.equal(result.serverData.status, 'online');
     const screenshotUrl = new URL(result.screenshotUrl);
     assert.equal(screenshotUrl.origin, 'https://motd.example.test');
-    const screenshot = await fetch(`${base}${screenshotUrl.pathname}${screenshotUrl.search}`);
+    const screenshot = await fetch(`${base}${screenshotUrl.pathname}${screenshotUrl.search}`, {
+        headers: { Origin: 'https://client.example.test' }
+    });
     assert.equal(screenshot.status, 200);
     assert.equal(screenshot.headers.get('content-type'), 'image/png');
+    assert.equal(screenshot.headers.get('access-control-allow-origin'), '*');
     assert.deepEqual(Buffer.from(await screenshot.arrayBuffer()).subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
 });

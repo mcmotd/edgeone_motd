@@ -61,7 +61,7 @@ function processSpecialFields(serverData) {
         // 1. 处理 MOTD 截断
         if (specialConf.motd_truncate) {
             const conf = specialConf.motd_truncate;
-            const sourceText = processedData[conf.source_key] || '';
+            const sourceText = (processedData[conf.source_key] || '').replace(/\r?\n/g, ' ');
             if (sourceText.length >= conf.max_length) {
                 processedData.motd_truncate = sourceText.substring(0, conf.max_length) + conf.ellipsis;
             } else {

@@ -45,6 +45,15 @@ const LEGACY_COLORS = {
     '8': '#555555', '9': '#5555FF', a: '#55FF55', b: '#55FFFF',
     c: '#FF5555', d: '#FF55FF', e: '#FFFF55', f: '#FFFFFF'
 };
+const BEDROCK_COLORS = {
+    '0': '#000000', '1': '#0000AA', '2': '#00AA00', '3': '#00AAAA',
+    '4': '#AA0000', '5': '#AA00AA', '6': '#FFAA00', '7': '#C5C5C5',
+    '8': '#545454', '9': '#447FFF', a: '#54FF54', b: '#54FFFF',
+    c: '#FF5454', d: '#FF54FF', e: '#FFFF54', f: '#FFFFFF',
+    g: '#EFCE16', h: '#D9CCB8', i: '#A9B4B7', j: '#8F727D',
+    m: '#EE222C', n: '#C87363', p: '#FFBF1E', q: '#13A045',
+    s: '#5FECFF', t: '#577BFF', u: '#B66CDD', v: '#FF6A00', w: '#8BB3FF'
+};
 const JSON_COLORS = {
     black: '#000000',
     dark_blue: '#0000AA',
@@ -114,8 +123,9 @@ function sanitizeText(value) {
     return String(value).replace(/\u00A7[0-9a-fk-or]/gi, '').trim();
 }
 
-function parseLegacySegments(text, colors) {
+function parseLegacySegments(text, colors, isBedrock = false) {
     const source = String(text || '');
+    const palette = isBedrock ? BEDROCK_COLORS : LEGACY_COLORS;
     const segments = [];
     let state = {
         color: colors.text,
@@ -136,11 +146,20 @@ function parseLegacySegments(text, colors) {
     for (let i = 0; i < source.length; i++) {
         const char = source[i];
         if (char === MC_CODE && i + 1 < source.length) {
+            const code = source[i + 1].toLowerCase();
+            if (!palette[code] && !'klor'.includes(code) && (isBedrock || !'mn'.includes(code))) {
+                buffer += char;
+                continue;
+            }
             flush();
-            const code = source[++i].toLowerCase();
-            if (LEGACY_COLORS[code]) {
+            i += 1;
+            if (palette[code]) {
+                if (isBedrock) {
+                    state.color = palette[code];
+                    continue;
+                }
                 state = {
-                    color: LEGACY_COLORS[code],
+                    color: palette[code],
                     bold: false,
                     italic: false,
                     underline: false,
@@ -210,14 +229,14 @@ function parseJsonSegments(node, colors, inherited = {}) {
     return segments;
 }
 
-function getMotdSegments(motd, colors) {
+function getMotdSegments(motd, colors, isBedrock) {
     if (!motd) return [];
     if (typeof motd === 'object') return parseJsonSegments(motd, colors);
-    return parseLegacySegments(motd, colors);
+    return parseLegacySegments(motd, colors, isBedrock);
 }
 
-function layoutMotdLines(ctx, motd, maxWidth, maxLines, colors) {
-    const segments = getMotdSegments(motd, colors);
+function layoutMotdLines(ctx, motd, maxWidth, maxLines, colors, isBedrock) {
+    const segments = getMotdSegments(motd, colors, isBedrock);
     const lines = [[]];
     let lineIndex = 0;
     let lineWidth = 0;
@@ -234,7 +253,7 @@ function layoutMotdLines(ctx, motd, maxWidth, maxLines, colors) {
 
     for (const segment of segments) {
         const chars = segment.obfuscated
-            ? Array.from({ length: segment.text.length }, (_, index) => OBFUSCATED[index % OBFUSCATED.length])
+            ? Array.from({ length: segment.text.length }, (_, index) => segment.text[index] === '\n' ? '\n' : OBFUSCATED[index % OBFUSCATED.length])
             : segment.text.split('');
 
         for (const char of chars) {
@@ -253,7 +272,7 @@ function layoutMotdLines(ctx, motd, maxWidth, maxLines, colors) {
             lines[lineIndex].push({
                 char,
                 width: charWidth,
-                color: segment.obfuscated ? colors.obfuscated : (segment.color || colors.text),
+                color: segment.obfuscated && !isBedrock ? colors.obfuscated : (segment.color || colors.text),
                 bold: segment.bold,
                 italic: segment.italic
             });
@@ -264,8 +283,8 @@ function layoutMotdLines(ctx, motd, maxWidth, maxLines, colors) {
     return lines;
 }
 
-function drawMotd(ctx, motd, x, centerY, maxWidth, maxLines, colors) {
-    const lines = layoutMotdLines(ctx, motd, maxWidth, maxLines, colors);
+function drawMotd(ctx, motd, x, centerY, maxWidth, maxLines, colors, isBedrock) {
+    const lines = layoutMotdLines(ctx, motd, maxWidth, maxLines, colors, isBedrock);
     const lineHeight = 28;
     const totalHeight = (lines.length - 1) * lineHeight;
     let cursorY = centerY - totalHeight / 2 + 7;
@@ -507,7 +526,7 @@ async function drawOnline(ctx, width, height, serverData, options) {
     await drawIcon(ctx, iconUrl, 24, 159, 72, colors);
 
     ctx.textAlign = 'left';
-    drawMotd(ctx, serverData.motd || serverData.pureMotd || serverData.host, contentX, headerCenterY, 408, 2, colors);
+    drawMotd(ctx, serverData.motd || serverData.pureMotd, contentX, headerCenterY, 408, 2, colors, serverData.type === 'Bedrock');
 
     const badgeWidth = getStatusBadgeWidth(ctx, serverData.type || serverData.status || 'ONLINE');
     drawStatusBadge(ctx, serverData.type || serverData.status || 'ONLINE', width - 24 - badgeWidth, 24, colors);
